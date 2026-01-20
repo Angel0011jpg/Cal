@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registro de Animales</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 20px; max-width: 800px; margin: auto; background:#f4f6f8; color:#333;}
+h1,h2,h3 { text-align:center; color:#222;}
+input, select, button { padding:10px; margin:5px 0; width:100%; border-radius:10px; border:1px solid #ccc; box-sizing:border-box; font-size:1rem; }
+button { cursor:pointer; background:#007bff; color:white; border:none; transition:0.2s; font-weight:bold;}
+button:hover { background:#0056b3; }
+table { width:100%; border-collapse:collapse; margin-top:10px; background:white; border-radius:10px; overflow:hidden; }
+th, td { border:1px solid #ddd; padding:8px; text-align:center; }
+th { background:#e9ecef; }
+.cuadro { border:1px solid #ccc; padding:15px; margin:15px 0; border-radius:12px; background:white; box-shadow:0 3px 8px rgba(0,0,0,0.1);}
+label { font-weight:bold; display:block; margin-top:5px;}
+small { color:#555; display:block; margin-bottom:5px;}
+#btnToggleMontos { margin-top:10px; }
+</style>
+</head>
+<body>
+
+<h1>Registro y Análisis de Animales</h1>
+
+<h2>Agregar Animal</h2>
+<select id="raza">
+  <option value="Brahman">Brahman</option>
+  <option value="Nerole">Nerole</option>
+  <option value="Pardo">Pardo</option>
+</select>
+<input type="number" id="peso" placeholder="Peso inicial (kg)">
+<input type="number" id="pesoCanal" placeholder="Peso en canal (kg)">
+<small>Si seleccionas Precio/kg en canal, debes ingresar el peso en canal</small>
+<input type="number" id="rendimiento" placeholder="Rendimiento (%)">
+
+<h3>Precio Pagado</h3>
+<select id="tipoPagado">
+  <option value="total">Total</option>
+  <option value="kg">Precio/kg</option>
+</select>
+<input type="text" id="precioPagado" placeholder="₡" oninput="formatInput(this)">
+
+<h3>Precio Canal</h3>
+<select id="tipoCanal">
+  <option value="total">Total</option>
+  <option value="kg">Precio/kg</option>
+</select>
+<input type="text" id="precioCanal" placeholder="₡" oninput="formatInput(this)">
+
+<button onclick="agregarAnimal()">Agregar Animal</button>
+
+<h2>Totales</h2>
+<button id="btnToggleMontos" onclick="toggleMontos()">Mostrar</button>
+<div id="totales" class="cuadro">
+  <p>Total Pagado: <span id="totalPagado">*****</span></p>
+  <p>Total Canal: <span id="totalCanal">*****</span></p>
+  <p>Ganancia Total: <span id="totalGanancia">*****</span></p>
+</div>
+
+<h2>Conversor a USD</h2>
+<input type="number" id="tasaDolar" placeholder="Tasa de cambio ₡ → $" onchange="actualizarTotales()">
+<div id="totalesDolar" class="cuadro">
+  <p>Total Pagado USD: <span id="totalPagadoUSD">*****</span></p>
+  <p>Total Canal USD: <span id="totalCanalUSD">*****</span></p>
+  <p>Ganancia Total USD: <span id="totalGananciaUSD">*****</span></p>
+</div>
+
+<h2>Historial de Animales</h2>
+<select id="filtroRaza" onchange="mostrarHistorial()">
+  <option value="Todas">Todas</option>
+  <option value="Brahman">Brahman</option>
+  <option value="Nerole">Nerole</option>
+  <option value="Pardo">Pardo</option>
+</select>
+<label><input type="checkbox" id="ordenGanancia" onchange="mostrarHistorial()"> Ordenar por ganancia de mayor a menor</label>
+
+<table id="tablaHistorial">
+  <thead>
+    <tr>
+      <th>FechaHora</th>
+      <th>Raza</th>
+      <th>Peso</th>
+      <th>Peso Canal</th>
+      <th>Precio Pagado</th>
+      <th>Precio Canal</th>
+      <th>Rendimiento</th>
+      <th>Ganancia</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<h2>Cerrar Día</h2>
+<button onclick="cerrarDia()">Cerrar Día</button>
+<div id="resumenDia" class="cuadro" style="display:none;">
+  <div id="contenidoResumen">
+    <p>Total Pagado: *****</p>
+    <p>Total Canal: *****</p>
+    <p>Total Ganancia: *****</p>
+    <p>Raza más rentable: -</p>
+  </div>
+</div>
+
+<script>
+let animales = JSON.parse(localStorage.getItem('animales')) || [];
+let editIndex = null;
+let montosVisibles = false;
+
+// ---- FORMATOS ----
+function formatInput(input){
+    let value = input.value.replace(/[^\d]/g,'');
+    input.value = value ? '₡'+value : '';
+}
+
+function parseColones(str){
+    return parseFloat(str.replace(/₡|\.|,/g,'').replace(',','.')) || 0;
+}
+
+function formatColones(num){
+    return '₡'+num.toFixed(2).replace(/\d(?=(\d{3})+\.)/g,'$&').replace('.',',');
+}
+
+function formatDolar(num){
+    return '$'+num.toFixed(2).replace(/\d(?=(\d{3})+\.)/g,'$&');
+}
+
+// ---- FUNCIONES PRINCIPALES ----
+function guardar(){
+  localStorage.setItem('animales',JSON.stringify(animales));
+  mostrarHistorial();
+  actualizarTotales();
+}
+
+function agregarAnimal(){
+  const raza = document.getElementById('raza').value;
+  const peso = parseFloat(document.getElementById('peso').value) || 0;
+  const pesoCanal = parseFloat(document.getElementById('pesoCanal').value) || 0;
+  const rendimiento = parseFloat(document.getElementById('rendimiento').value) || 0;
+
+  const tipoPagado = document.getElementById('tipoPagado').value;
+  let precioPagado = parseColones(document.getElementById('precioPagado').value);
+  if(tipoPagado==='kg') precioPagado *= peso;
+
+  const tipoCanal = document.getElementById('tipoCanal').value;
+  let precioCanal = parseColones(document.getElementById('precioCanal').value);
+  if(tipoCanal==='kg'){
+    if(!pesoCanal){ alert('Debes ingresar el peso en canal antes de agregar animal.'); return; }
+    precioCanal *= pesoCanal;
+  }
+
+  const ganancia = precioCanal - precioPagado;
+  const fechaHora = new Date().toLocaleString();
+
+  if(editIndex!==null){
+    animales[editIndex] = {fechaHora, raza, peso, pesoCanal, precioPagado, precioCanal, rendimiento, ganancia};
+    editIndex = null;
+  } else {
+    animales.push({fechaHora, raza, peso, pesoCanal, precioPagado, precioCanal, rendimiento, ganancia});
+  }
+  guardar();
+  limpiarFormulario();
+}
+
+function limpiarFormulario(){
+  document.getElementById('peso').value='';
+  document.getElementById('pesoCanal').value='';
+  document.getElementById('precioPagado').value='';
+  document.getElementById('precioCanal').value='';
+  document.getElementById('rendimiento').value='';
+}
+
+// ---- HISTORIAL ----
+function mostrarHistorial(){
+  const tbody = document.querySelector('#tablaHistorial tbody');
+  tbody.innerHTML='';
+  const filtro = document.getElementById('filtroRaza').value;
+  let lista = animales.slice();
+  if(filtro!=='Todas') lista = lista.filter(a=>a.raza===filtro);
+  if(document.getElementById('ordenGanancia').checked) lista.sort((a,b)=>b.ganancia - a.ganancia);
+
+  lista.forEach((a,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML=`
+      <td>${a.fechaHora}</td>
+      <td>${a.raza}</td>
+      <td>${a.peso}</td>
+      <td>${a.pesoCanal}</td>
+      <td>${montosVisibles? formatColones(a.precioPagado) : '*****'}</td>
+      <td>${montosVisibles? formatColones(a.precioCanal) : '*****'}</td>
+      <td>${a.rendimiento}</td>
+      <td>${montosVisibles? formatColones(a.ganancia) : '*****'}</td>
+      <td>
+        <button onclick="editarAnimal(${i})">Editar</button>
+        <button onclick="borrarAnimal(${i})">Borrar</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function borrarAnimal(i){ if(confirm('¿Seguro que quieres borrar este registro?')){ animales.splice(i,1); guardar(); } }
+
+function editarAnimal(i){
+  editIndex = i;
+  const a = animales[i];
+  document.getElementById('raza').value = a.raza;
+  document.getElementById('peso').value = a.peso;
+  document.getElementById('pesoCanal').value = a.pesoCanal;
+  document.getElementById('rendimiento').value = a.rendimiento;
+  document.getElementById('precioPagado').value = '₡'+a.precioPagado;
+  document.getElementById('precioCanal').value = '₡'+a.precioCanal;
+}
+
+// ---- TOTALES ----
+function actualizarTotales(){
+  const totalPagado = animales.reduce((s,a)=>s+a.precioPagado,0);
+  const totalCanal = animales.reduce((s,a)=>s+a.precioCanal,0);
+  const totalGanancia = totalCanal - totalPagado;
+
+  document.getElementById('totalPagado').innerText = montosVisibles ? formatColones(totalPagado) : '*****';
+  document.getElementById('totalCanal').innerText = montosVisibles ? formatColones(totalCanal) : '*****';
+  document.getElementById('totalGanancia').innerText = montosVisibles ? formatColones(totalGanancia) : '*****';
+
+  const tasa = parseFloat(document.getElementById('tasaDolar').value) || 1;
+  document.getElementById('totalPagadoUSD').innerText = montosVisibles ? formatDolar(totalPagado/tasa) : '*****';
+  document.getElementById('totalCanalUSD').innerText = montosVisibles ? formatDolar(totalCanal/tasa) : '*****';
+  document.getElementById('totalGananciaUSD').innerText = montosVisibles ? formatDolar(totalGanancia/tasa) : '*****';
+}
+
+// ---- BOTÓN MOSTRAR / OCULTAR ----
+function toggleMontos(){
+  montosVisibles = !montosVisibles;
+  document.getElementById('btnToggleMontos').innerText = montosVisibles ? 'Ocultar' : 'Mostrar';
+  actualizarTotales();
+  actualizarResumenDia();
+  mostrarHistorial();
+}
+
+// ---- CERRAR DÍA ----
+function cerrarDia(){
+  if(animales.length===0){alert('No hay registros para cerrar'); return;}
+  document.getElementById('resumenDia').style.display='block';
+  actualizarResumenDia();
+}
+
+function actualizarResumenDia(){
+  const totalPagado = animales.reduce((s,a)=>s+a.precioPagado,0);
+  const totalCanal = animales.reduce((s,a)=>s+a.precioCanal,0);
+  const totalGanancia = totalCanal - totalPagado;
+  
+  const razaGanancia = {};
+  animales.forEach(a => razaGanancia[a.raza] = (razaGanancia[a.raza] || 0) + a.ganancia);
+  
+  let maxRaza = '', maxVal = -Infinity;
+  for(let r in razaGanancia){ if(razaGanancia[r]>maxVal){ maxVal=razaGanancia[r]; maxRaza=r; } }
+  
+  const fechaReporte = new Date().toLocaleString(); // <-- fecha y hora actual
+
+  const contenido = document.getElementById('contenidoResumen');
+  contenido.innerHTML = `
+    <p><strong>Reporte generado:</strong> ${fechaReporte}</p>
+    <p>Total Pagado: ${montosVisibles ? formatColones(totalPagado) : '*****'}</p>
+    <p>Total Canal: ${montosVisibles ? formatColones(totalCanal) : '*****'}</p>
+    <p>Total Ganancia: ${montosVisibles ? formatColones(totalGanancia) : '*****'}</p>
+    <p>Raza más rentable: ${maxRaza}</p>
+  `;
+}
+
+// ---- INICIO ----
+mostrarHistorial();
+actualizarTotales();
+</script>
+
+</body>
+</html>
